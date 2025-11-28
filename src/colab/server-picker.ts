@@ -8,7 +8,7 @@ import vscode, { QuickPickItem } from "vscode";
 import { InputStep, MultiStepInput } from "../common/multi-step-quickpick";
 import { AssignmentManager } from "../jupyter/assignments";
 import { ColabServerDescriptor } from "../jupyter/servers";
-import { Variant, variantToMachineType } from "./api";
+import { Shape, shapeToRamType, Variant, variantToMachineType } from "./api";
 
 /** Provides an explanation to the user on updating the server alias. */
 export const PROMPT_SERVER_ALIAS =
@@ -32,10 +32,13 @@ export class ServerPicker {
    * server type.
    *
    * @param availableServers - The available servers to pick from.
+   * @param isHighMemEligible - Whether the user is eligible to select high-mem
+   * machines (e.g., Colab Pro users).
    * @returns The selected server, or undefined if the user cancels.
    */
   async prompt(
     availableServers: ColabServerDescriptor[],
+    isHighMemEligible: boolean = false,
   ): Promise<ColabServerDescriptor | undefined> {
     const variantToAccelerators = new Map<Variant, Set<string>>();
     for (const server of availableServers) {
@@ -50,7 +53,12 @@ export class ServerPicker {
 
     const state: Partial<Server> = {};
     await MultiStepInput.run(this.vs, (input) =>
-      this.promptForVariant(input, state, variantToAccelerators),
+      this.promptForVariant(
+        input,
+        state,
+        variantToAccelerators,
+        isHighMemEligible,
+      ),
     );
     if (
       state.variant === undefined ||
@@ -59,17 +67,22 @@ export class ServerPicker {
     ) {
       return undefined;
     }
-    return {
+    const result: ColabServerDescriptor = {
       label: state.alias,
       variant: state.variant,
       accelerator: state.accelerator,
     };
+    if (state.shape !== undefined) {
+      return { ...result, shape: state.shape };
+    }
+    return result;
   }
 
   private async promptForVariant(
     input: MultiStepInput,
     state: Partial<Server>,
     acceleratorsByVariant: Map<Variant, Set<string>>,
+    isHighMemEligible: boolean,
   ): Promise<InputStep | undefined> {
     const items: VariantPick[] = [];
     for (const variant of acceleratorsByVariant.keys()) {
@@ -94,16 +107,27 @@ export class ServerPicker {
     // Skip prompting for an accelerator for the default variant (CPU).
     if (state.variant === Variant.DEFAULT) {
       state.accelerator = "NONE";
-      return (input: MultiStepInput) => this.promptForAlias(input, state);
+      if (isHighMemEligible) {
+        return (input: MultiStepInput) =>
+          this.promptForShape(input, state, isHighMemEligible);
+      }
+      return (input: MultiStepInput) =>
+        this.promptForAlias(input, state, isHighMemEligible);
     }
     return (input: MultiStepInput) =>
-      this.promptForAccelerator(input, state, acceleratorsByVariant);
+      this.promptForAccelerator(
+        input,
+        state,
+        acceleratorsByVariant,
+        isHighMemEligible,
+      );
   }
 
   private async promptForAccelerator(
     input: MultiStepInput,
     state: PartialServerWith<"variant">,
     acceleratorsByVariant: Map<Variant, Set<string>>,
+    isHighMemEligible: boolean,
   ): Promise<InputStep | undefined> {
     const accelerators = acceleratorsByVariant.get(state.variant) ?? new Set();
     const items: AcceleratorPick[] = [];
@@ -117,7 +141,7 @@ export class ServerPicker {
       title: "Select an accelerator",
       step: 2,
       // Since we have to pick an accelerator, we've added a step.
-      totalSteps: 3,
+      totalSteps: isHighMemEligible ? 4 : 3,
       items,
       activeItem: items.find((item) => item.value === state.accelerator),
       buttons: [input.vs.QuickInputButtons.Back],
@@ -127,18 +151,59 @@ export class ServerPicker {
       return;
     }
 
-    return (input: MultiStepInput) => this.promptForAlias(input, state);
+    if (isHighMemEligible) {
+      return (input: MultiStepInput) =>
+        this.promptForShape(input, state, isHighMemEligible);
+    }
+    return (input: MultiStepInput) =>
+      this.promptForAlias(input, state, isHighMemEligible);
+  }
+
+  private async promptForShape(
+    input: MultiStepInput,
+    state: PartialServerWith<"variant">,
+    isHighMemEligible: boolean,
+  ): Promise<InputStep | undefined> {
+    const items: ShapePick[] = [
+      { value: Shape.STANDARD, label: shapeToRamType(Shape.STANDARD) },
+      { value: Shape.HIGHMEM, label: shapeToRamType(Shape.HIGHMEM) },
+    ];
+    const hasAccelerator = state.accelerator && state.accelerator !== "NONE";
+    const step = hasAccelerator ? 3 : 2;
+    const pick = await input.showQuickPick({
+      title: "Select RAM",
+      step,
+      totalSteps: step + 1,
+      items,
+      activeItem: items.find((item) => item.value === state.shape),
+      buttons: [input.vs.QuickInputButtons.Back],
+    });
+    state.shape = pick.value;
+    if (state.shape === undefined) {
+      return;
+    }
+
+    return (input: MultiStepInput) =>
+      this.promptForAlias(input, state, isHighMemEligible);
   }
 
   private async promptForAlias(
     input: MultiStepInput,
     state: PartialServerWith<"variant">,
+    isHighMemEligible: boolean,
   ): Promise<InputStep | undefined> {
     const placeholder = await this.assignments.getDefaultLabel(
       state.variant,
       state.accelerator,
     );
-    const step = state.accelerator && state.accelerator !== "NONE" ? 3 : 2;
+    const hasAccelerator = state.accelerator && state.accelerator !== "NONE";
+    let step = 2;
+    if (hasAccelerator) {
+      step = 3;
+    }
+    if (isHighMemEligible) {
+      step = hasAccelerator ? 4 : 3;
+    }
     const alias = await input.showInputBox({
       title: "Alias your server",
       step,
@@ -157,6 +222,7 @@ export class ServerPicker {
 interface Server {
   variant: Variant;
   accelerator: string;
+  shape?: Shape;
   alias: string;
 }
 
@@ -184,4 +250,8 @@ interface VariantPick extends QuickPickItem {
 
 interface AcceleratorPick extends QuickPickItem {
   value: string;
+}
+
+interface ShapePick extends QuickPickItem {
+  value: Shape;
 }

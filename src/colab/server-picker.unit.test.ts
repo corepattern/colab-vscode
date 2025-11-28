@@ -14,7 +14,7 @@ import {
   buildQuickPickStub,
 } from "../test/helpers/quick-input";
 import { newVsCodeStub, VsCodeStub } from "../test/helpers/vscode";
-import { Variant } from "./api";
+import { Shape, Variant } from "./api";
 import { ServerPicker } from "./server-picker";
 
 const AVAILABLE_SERVERS = [
@@ -333,6 +333,204 @@ describe("ServerPicker", () => {
       await aliasInputShown;
       expect(aliasInputBoxStub.step).to.equal(3);
       expect(aliasInputBoxStub.totalSteps).to.equal(3);
+    });
+
+    describe("when high-mem is eligible", () => {
+      it("prompts for shape after variant for CPU", async () => {
+        const variantQuickPickStub = stubQuickPickForCall(0);
+        const shapeQuickPickStub = stubQuickPickForCall(1);
+        const aliasInputBoxStub = stubInputBoxForCall(0);
+
+        const variantPickerShown = variantQuickPickStub.nextShow();
+        void serverPicker.prompt(AVAILABLE_SERVERS, true);
+        await variantPickerShown;
+        const shapePickerShown = shapeQuickPickStub.nextShow();
+        variantQuickPickStub.onDidChangeSelection.yield([
+          { value: Variant.DEFAULT, label: "CPU" },
+        ]);
+        await shapePickerShown;
+        const aliasInputShown = aliasInputBoxStub.nextShow();
+        shapeQuickPickStub.onDidChangeSelection.yield([
+          { value: Shape.HIGHMEM, label: "High RAM" },
+        ]);
+        await aliasInputShown;
+      });
+
+      it("prompts for shape after accelerator for GPU", async () => {
+        const variantQuickPickStub = stubQuickPickForCall(0);
+        const acceleratorQuickPickStub = stubQuickPickForCall(1);
+        const shapeQuickPickStub = stubQuickPickForCall(2);
+        const aliasInputBoxStub = stubInputBoxForCall(0);
+
+        const variantPickerShown = variantQuickPickStub.nextShow();
+        void serverPicker.prompt(AVAILABLE_SERVERS, true);
+        await variantPickerShown;
+        const acceleratorPickerShown = acceleratorQuickPickStub.nextShow();
+        variantQuickPickStub.onDidChangeSelection.yield([
+          { value: Variant.GPU, label: "GPU" },
+        ]);
+        await acceleratorPickerShown;
+        const shapePickerShown = shapeQuickPickStub.nextShow();
+        acceleratorQuickPickStub.onDidChangeSelection.yield([
+          { value: "T4", label: "T4" },
+        ]);
+        await shapePickerShown;
+        const aliasInputShown = aliasInputBoxStub.nextShow();
+        shapeQuickPickStub.onDidChangeSelection.yield([
+          { value: Shape.STANDARD, label: "Standard RAM" },
+        ]);
+        await aliasInputShown;
+      });
+
+      it("returns the server type with shape when all prompts are answered for GPU", async () => {
+        const variantQuickPickStub = stubQuickPickForCall(0);
+        const acceleratorQuickPickStub = stubQuickPickForCall(1);
+        const shapeQuickPickStub = stubQuickPickForCall(2);
+        const aliasInputBoxStub = stubInputBoxForCall(0);
+
+        const variantPickerShown = variantQuickPickStub.nextShow();
+        const prompt = serverPicker.prompt(AVAILABLE_SERVERS, true);
+        await variantPickerShown;
+        const acceleratorPickerShown = acceleratorQuickPickStub.nextShow();
+        variantQuickPickStub.onDidChangeSelection.yield([
+          { value: Variant.GPU, label: "GPU" },
+        ]);
+        await acceleratorPickerShown;
+        const shapePickerShown = shapeQuickPickStub.nextShow();
+        acceleratorQuickPickStub.onDidChangeSelection.yield([
+          { value: "T4", label: "T4" },
+        ]);
+        await shapePickerShown;
+        const aliasInputShown = aliasInputBoxStub.nextShow();
+        shapeQuickPickStub.onDidChangeSelection.yield([
+          { value: Shape.HIGHMEM, label: "High RAM" },
+        ]);
+        await aliasInputShown;
+        aliasInputBoxStub.value = "foo";
+        aliasInputBoxStub.onDidChangeValue.yield("foo");
+        aliasInputBoxStub.onDidAccept.yield();
+
+        await expect(prompt).to.eventually.be.deep.equal({
+          label: "foo",
+          variant: Variant.GPU,
+          accelerator: "T4",
+          shape: Shape.HIGHMEM,
+        });
+      });
+
+      it("returns the server type with shape when all prompts are answered for CPU", async () => {
+        const variantQuickPickStub = stubQuickPickForCall(0);
+        const shapeQuickPickStub = stubQuickPickForCall(1);
+        const aliasInputBoxStub = stubInputBoxForCall(0);
+
+        const variantPickerShown = variantQuickPickStub.nextShow();
+        const prompt = serverPicker.prompt(AVAILABLE_SERVERS, true);
+        await variantPickerShown;
+        const shapePickerShown = shapeQuickPickStub.nextShow();
+        variantQuickPickStub.onDidChangeSelection.yield([
+          { value: Variant.DEFAULT, label: "CPU" },
+        ]);
+        await shapePickerShown;
+        const aliasInputShown = aliasInputBoxStub.nextShow();
+        shapeQuickPickStub.onDidChangeSelection.yield([
+          { value: Shape.HIGHMEM, label: "High RAM" },
+        ]);
+        await aliasInputShown;
+        aliasInputBoxStub.value = "my-cpu";
+        aliasInputBoxStub.onDidChangeValue.yield("my-cpu");
+        aliasInputBoxStub.onDidAccept.yield();
+
+        await expect(prompt).to.eventually.be.deep.equal({
+          label: "my-cpu",
+          variant: Variant.DEFAULT,
+          accelerator: "NONE",
+          shape: Shape.HIGHMEM,
+        });
+      });
+
+      it("sets the right step for CPU with shape selection", async () => {
+        const variantQuickPickStub = stubQuickPickForCall(0);
+        const shapeQuickPickStub = stubQuickPickForCall(1);
+        const aliasInputBoxStub = stubInputBoxForCall(0);
+        const variantPickerShown = variantQuickPickStub.nextShow();
+        const shapePickerShown = shapeQuickPickStub.nextShow();
+        const aliasInputShown = aliasInputBoxStub.nextShow();
+
+        void serverPicker.prompt(AVAILABLE_SERVERS, true);
+
+        await variantPickerShown;
+        expect(variantQuickPickStub.step).to.equal(1);
+        expect(variantQuickPickStub.totalSteps).to.equal(2);
+
+        variantQuickPickStub.onDidChangeSelection.yield([
+          { value: Variant.DEFAULT, label: "CPU" },
+        ]);
+        await shapePickerShown;
+        expect(shapeQuickPickStub.step).to.equal(2);
+        expect(shapeQuickPickStub.totalSteps).to.equal(3);
+
+        shapeQuickPickStub.onDidChangeSelection.yield([
+          { value: Shape.HIGHMEM, label: "High RAM" },
+        ]);
+        await aliasInputShown;
+        expect(aliasInputBoxStub.step).to.equal(3);
+        expect(aliasInputBoxStub.totalSteps).to.equal(3);
+      });
+
+      it("sets the right step for GPU with shape selection", async () => {
+        const variantQuickPickStub = stubQuickPickForCall(0);
+        const acceleratorQuickPickStub = stubQuickPickForCall(1);
+        const shapeQuickPickStub = stubQuickPickForCall(2);
+        const aliasInputBoxStub = stubInputBoxForCall(0);
+        const variantPickerShown = variantQuickPickStub.nextShow();
+        const acceleratorPickerShown = acceleratorQuickPickStub.nextShow();
+        const shapePickerShown = shapeQuickPickStub.nextShow();
+        const aliasInputShown = aliasInputBoxStub.nextShow();
+
+        void serverPicker.prompt(AVAILABLE_SERVERS, true);
+
+        await variantPickerShown;
+        expect(variantQuickPickStub.step).to.equal(1);
+        expect(variantQuickPickStub.totalSteps).to.equal(2);
+
+        variantQuickPickStub.onDidChangeSelection.yield([
+          { value: Variant.GPU, label: "GPU" },
+        ]);
+        await acceleratorPickerShown;
+        expect(acceleratorQuickPickStub.step).to.equal(2);
+        expect(acceleratorQuickPickStub.totalSteps).to.equal(4);
+
+        acceleratorQuickPickStub.onDidChangeSelection.yield([
+          { value: "T4", label: "T4" },
+        ]);
+        await shapePickerShown;
+        expect(shapeQuickPickStub.step).to.equal(3);
+        expect(shapeQuickPickStub.totalSteps).to.equal(4);
+
+        shapeQuickPickStub.onDidChangeSelection.yield([
+          { value: Shape.STANDARD, label: "Standard RAM" },
+        ]);
+        await aliasInputShown;
+        expect(aliasInputBoxStub.step).to.equal(4);
+        expect(aliasInputBoxStub.totalSteps).to.equal(4);
+      });
+
+      it("returns undefined when selecting shape is cancelled", async () => {
+        const variantQuickPickStub = stubQuickPickForCall(0);
+        const shapeQuickPickStub = stubQuickPickForCall(1);
+
+        const variantPickerShown = variantQuickPickStub.nextShow();
+        const prompt = serverPicker.prompt(AVAILABLE_SERVERS, true);
+        await variantPickerShown;
+        const shapePickerShown = shapeQuickPickStub.nextShow();
+        variantQuickPickStub.onDidChangeSelection.yield([
+          { value: Variant.DEFAULT, label: "CPU" },
+        ]);
+        await shapePickerShown;
+        shapeQuickPickStub.onDidHide.yield();
+
+        await expect(prompt).to.eventually.be.undefined;
+      });
     });
   });
 });

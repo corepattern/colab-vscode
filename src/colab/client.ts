@@ -15,6 +15,7 @@ import {
   Assignment,
   CcuInfo,
   Variant,
+  Shape,
   GetAssignmentResponse,
   CcuInfoSchema,
   AssignmentSchema,
@@ -110,6 +111,7 @@ export class ColabClient {
    * This value should always be a string of length 44.
    * @param variant - The machine variant to assign.
    * @param accelerator - The accelerator to assign.
+   * @param shape - The machine shape to assign.
    * @param signal - Optional {@link AbortSignal} to cancel the request.
    * @returns The assignment which is assigned to the user.
    * @throws TooManyAssignmentsError if the user has too many assignments.
@@ -120,12 +122,14 @@ export class ColabClient {
     notebookHash: UUID,
     variant: Variant,
     accelerator?: string,
+    shape?: Shape,
     signal?: AbortSignal,
   ): Promise<{ assignment: Assignment; isNew: boolean }> {
     const assignment = await this.getAssignment(
       notebookHash,
       variant,
       accelerator,
+      shape,
       signal,
     );
     switch (assignment.kind) {
@@ -143,6 +147,7 @@ export class ColabClient {
             assignment.xsrfToken,
             variant,
             accelerator,
+            shape,
             signal,
           );
         } catch (error) {
@@ -352,9 +357,10 @@ export class ColabClient {
     notebookHash: UUID,
     variant: Variant,
     accelerator?: string,
+    shape?: Shape,
     signal?: AbortSignal,
   ): Promise<AssignmentToken | AssignedAssignment> {
-    const url = this.buildAssignUrl(notebookHash, variant, accelerator);
+    const url = this.buildAssignUrl(notebookHash, variant, accelerator, shape);
     const response = await this.issueRequest(
       url,
       { method: "GET", signal },
@@ -372,9 +378,10 @@ export class ColabClient {
     xsrfToken: string,
     variant: Variant,
     accelerator?: string,
+    shape?: Shape,
     signal?: AbortSignal,
   ): Promise<PostAssignmentResponse> {
-    const url = this.buildAssignUrl(notebookHash, variant, accelerator);
+    const url = this.buildAssignUrl(notebookHash, variant, accelerator, shape);
     return await this.issueRequest(
       url,
       {
@@ -390,6 +397,7 @@ export class ColabClient {
     notebookHash: UUID,
     variant: Variant,
     accelerator?: string,
+    shape?: Shape,
   ): URL {
     const url = new URL(`${TUN_ENDPOINT}/assign`, this.colabDomain);
     url.searchParams.append("nbh", uuidToWebSafeBase64(notebookHash));
@@ -398,6 +406,11 @@ export class ColabClient {
     }
     if (accelerator) {
       url.searchParams.append("accelerator", accelerator);
+    }
+    // Only include shape parameter when it's not STANDARD, as STANDARD is the
+    // default behavior when the parameter is omitted.
+    if (shape !== undefined && shape !== Shape.STANDARD) {
+      url.searchParams.append("shape", shape.toString());
     }
     return url;
   }
