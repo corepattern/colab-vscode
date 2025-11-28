@@ -224,6 +224,7 @@ export class AssignmentManager implements vscode.Disposable {
         id,
         descriptor.variant,
         descriptor.accelerator,
+        descriptor.shape,
         signal,
       ));
     } catch (error) {

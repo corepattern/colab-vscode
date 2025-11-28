@@ -281,6 +281,104 @@ describe("ColabClient", () => {
         });
       }
 
+      it("creates a new assignment with highmem shape", async () => {
+        const variant = Variant.GPU;
+        const accelerator = "T4";
+        const postQueryParams: Record<string, string | RegExp> = {
+          ...queryParams,
+          variant,
+          accelerator,
+          shape: Shape.HIGHMEM.toString(),
+        };
+        const assignmentResponse = {
+          ...DEFAULT_ASSIGNMENT_RESPONSE,
+          variant,
+          accelerator,
+          machineShape: Shape.HIGHMEM,
+        };
+        fetchStub
+          .withArgs(
+            urlMatcher({
+              method: "POST",
+              host: COLAB_HOST,
+              path: ASSIGN_PATH,
+              queryParams: postQueryParams,
+              otherHeaders: {
+                [COLAB_XSRF_TOKEN_HEADER.key]: "mock-xsrf-token",
+              },
+            }),
+          )
+          .resolves(
+            new Response(withXSSI(JSON.stringify(assignmentResponse)), {
+              status: 200,
+            }),
+          );
+
+        const expectedAssignment: Assignment = {
+          ...DEFAULT_ASSIGNMENT,
+          variant,
+          accelerator,
+          machineShape: Shape.HIGHMEM,
+        };
+        await expect(
+          client.assign(NOTEBOOK_HASH, variant, accelerator, Shape.HIGHMEM),
+        ).to.eventually.deep.equal({
+          assignment: expectedAssignment,
+          isNew: true,
+        });
+
+        sinon.assert.calledTwice(fetchStub);
+      });
+
+      it("does not include shape param when shape is STANDARD", async () => {
+        const variant = Variant.GPU;
+        const accelerator = "T4";
+        // Note: no shape param expected in queryParams
+        const postQueryParams: Record<string, string | RegExp> = {
+          ...queryParams,
+          variant,
+          accelerator,
+        };
+        const assignmentResponse = {
+          ...DEFAULT_ASSIGNMENT_RESPONSE,
+          variant,
+          accelerator,
+          machineShape: Shape.STANDARD,
+        };
+        fetchStub
+          .withArgs(
+            urlMatcher({
+              method: "POST",
+              host: COLAB_HOST,
+              path: ASSIGN_PATH,
+              queryParams: postQueryParams,
+              otherHeaders: {
+                [COLAB_XSRF_TOKEN_HEADER.key]: "mock-xsrf-token",
+              },
+            }),
+          )
+          .resolves(
+            new Response(withXSSI(JSON.stringify(assignmentResponse)), {
+              status: 200,
+            }),
+          );
+
+        const expectedAssignment: Assignment = {
+          ...DEFAULT_ASSIGNMENT,
+          variant,
+          accelerator,
+          machineShape: Shape.STANDARD,
+        };
+        await expect(
+          client.assign(NOTEBOOK_HASH, variant, accelerator, Shape.STANDARD),
+        ).to.eventually.deep.equal({
+          assignment: expectedAssignment,
+          isNew: true,
+        });
+
+        sinon.assert.calledTwice(fetchStub);
+      });
+
       it("rejects when assignments exceed limit", async () => {
         fetchStub
           .withArgs(

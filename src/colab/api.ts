@@ -391,3 +391,18 @@ export function variantToMachineType(variant: Variant): string {
       return "TPU";
   }
 }
+
+/**
+ * Maps a Colab {@link Shape} to a human-friendly RAM type name.
+ *
+ * @param shape - The Colab {@link Shape}.
+ * @returns The human-friendly RAM type name.
+ */
+export function shapeToRamType(shape: Shape): string {
+  switch (shape) {
+    case Shape.STANDARD:
+      return "Standard RAM";
+    case Shape.HIGHMEM:
+      return "High RAM";
+  }
+}
