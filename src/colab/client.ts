@@ -407,6 +407,8 @@ export class ColabClient {
     if (accelerator) {
       url.searchParams.append("accelerator", accelerator);
     }
+    // Only include shape parameter when it's not STANDARD, as STANDARD is the
+    // default behavior when the parameter is omitted.
     if (shape !== undefined && shape !== Shape.STANDARD) {
       url.searchParams.append("shape", shape.toString());
     }
