@@ -445,6 +445,7 @@ describe("ColabJupyterServerProvider", () => {
 
       describe("for new Colab server", () => {
         it("returns undefined when navigating back out of the flow", async () => {
+          colabClientStub.getSubscriptionTier.resolves(SubscriptionTier.NONE);
           serverPickerStub.prompt.rejects(InputFlowAction.back);
 
           await expect(
@@ -456,7 +457,8 @@ describe("ColabJupyterServerProvider", () => {
           sinon.assert.calledOnce(serverPickerStub.prompt);
         });
 
-        it("completes assigning a server", async () => {
+        it("completes assigning a server for free user without high-mem option", async () => {
+          colabClientStub.getSubscriptionTier.resolves(SubscriptionTier.NONE);
           const availableServers = [DEFAULT_SERVER];
           assignmentStub.getAvailableServerDescriptors.resolves(
             availableServers,
@@ -467,7 +469,7 @@ describe("ColabJupyterServerProvider", () => {
             accelerator: DEFAULT_SERVER.accelerator,
           };
           serverPickerStub.prompt
-            .withArgs(availableServers)
+            .withArgs(availableServers, false)
             .resolves(selectedServer);
           assignmentStub.assignServer
             .withArgs(selectedServer)
@@ -480,8 +482,110 @@ describe("ColabJupyterServerProvider", () => {
             ),
           ).to.eventually.deep.equal(DEFAULT_SERVER);
 
-          sinon.assert.calledOnce(serverPickerStub.prompt);
+          sinon.assert.calledOnceWithExactly(
+            serverPickerStub.prompt,
+            availableServers,
+            false,
+          );
           sinon.assert.calledOnce(assignmentStub.assignServer);
+        });
+
+        it("enables high-mem option for Pro users", async () => {
+          colabClientStub.getSubscriptionTier.resolves(SubscriptionTier.PRO);
+          const availableServers = [DEFAULT_SERVER];
+          assignmentStub.getAvailableServerDescriptors.resolves(
+            availableServers,
+          );
+          const selectedServer: ColabServerDescriptor = {
+            label: "My new server",
+            variant: DEFAULT_SERVER.variant,
+            accelerator: DEFAULT_SERVER.accelerator,
+          };
+          serverPickerStub.prompt
+            .withArgs(availableServers, true)
+            .resolves(selectedServer);
+          assignmentStub.assignServer
+            .withArgs(selectedServer)
+            .resolves(DEFAULT_SERVER);
+
+          await expect(
+            serverProvider.handleCommand(
+              { label: NEW_SERVER.label },
+              cancellationToken,
+            ),
+          ).to.eventually.deep.equal(DEFAULT_SERVER);
+
+          sinon.assert.calledOnceWithExactly(
+            serverPickerStub.prompt,
+            availableServers,
+            true,
+          );
+        });
+
+        it("enables high-mem option for Pro Plus users", async () => {
+          colabClientStub.getSubscriptionTier.resolves(
+            SubscriptionTier.PRO_PLUS,
+          );
+          const availableServers = [DEFAULT_SERVER];
+          assignmentStub.getAvailableServerDescriptors.resolves(
+            availableServers,
+          );
+          const selectedServer: ColabServerDescriptor = {
+            label: "My new server",
+            variant: DEFAULT_SERVER.variant,
+            accelerator: DEFAULT_SERVER.accelerator,
+          };
+          serverPickerStub.prompt
+            .withArgs(availableServers, true)
+            .resolves(selectedServer);
+          assignmentStub.assignServer
+            .withArgs(selectedServer)
+            .resolves(DEFAULT_SERVER);
+
+          await expect(
+            serverProvider.handleCommand(
+              { label: NEW_SERVER.label },
+              cancellationToken,
+            ),
+          ).to.eventually.deep.equal(DEFAULT_SERVER);
+
+          sinon.assert.calledOnceWithExactly(
+            serverPickerStub.prompt,
+            availableServers,
+            true,
+          );
+        });
+
+        it("defaults to no high-mem option when tier check fails", async () => {
+          colabClientStub.getSubscriptionTier.rejects(new Error("Network error"));
+          const availableServers = [DEFAULT_SERVER];
+          assignmentStub.getAvailableServerDescriptors.resolves(
+            availableServers,
+          );
+          const selectedServer: ColabServerDescriptor = {
+            label: "My new server",
+            variant: DEFAULT_SERVER.variant,
+            accelerator: DEFAULT_SERVER.accelerator,
+          };
+          serverPickerStub.prompt
+            .withArgs(availableServers, false)
+            .resolves(selectedServer);
+          assignmentStub.assignServer
+            .withArgs(selectedServer)
+            .resolves(DEFAULT_SERVER);
+
+          await expect(
+            serverProvider.handleCommand(
+              { label: NEW_SERVER.label },
+              cancellationToken,
+            ),
+          ).to.eventually.deep.equal(DEFAULT_SERVER);
+
+          sinon.assert.calledOnceWithExactly(
+            serverPickerStub.prompt,
+            availableServers,
+            false,
+          );
         });
       });
     });

@@ -221,8 +221,18 @@ export class ColabJupyterServerProvider
   }
 
   private async assignServer(): Promise<JupyterServer> {
+    // Check if user is a Pro subscriber (Pro or Pro+) to enable high-mem option
+    let isHighMemEligible = false;
+    try {
+      const tier = await this.client.getSubscriptionTier();
+      isHighMemEligible =
+        tier === SubscriptionTier.PRO || tier === SubscriptionTier.PRO_PLUS;
+    } catch {
+      // If we can't determine the tier, default to no high-mem option
+    }
     const serverType = await this.serverPicker.prompt(
       await this.assignmentManager.getAvailableServerDescriptors(),
+      isHighMemEligible,
     );
     if (!serverType) {
       throw new this.vs.CancellationError();
